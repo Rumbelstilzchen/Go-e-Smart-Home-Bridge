@@ -1,0 +1,32 @@
+Mail:
+  From: your-email@gmail.com
+  To: recipient@example.com
+  Server: smtp.gmail.com
+  port: 465
+  Password: your-mail-password
+
+MQTT:
+  client_id: Go-e SmartHome Bridge
+  broker_ip: ip-or-dns-of-broker
+  broker_port: port # 1883 or with tls 1883
+  user: your-mqtt-user
+  password: your-mqtt-password
+  cert_file: ca.crt # if needed must be placed alongside this config - if not needed just comment
+  input_topics:
+    - SmartHome/Kostal_Piko_BA
+    - SmartHome/Elgris
+  output_topic: SmartHome/GoE-Garage/ids/set
+
+
+charger:
+  ip: ip-of-goe # IP address of the Go-e charger used for restart or in case of http api
+  API: http # http or modbus - fallback is http
+  bat_SOC_charge_offset:
+    50: 4000 # 4000 reserves 4kW for charging until SOC is at 50%
+    99: 1000 # 1000 reserves 1kW for charging until SOC is at 99%
+  general_charge_offset: 50  # 50 gives some freedom for the PV-inverter compensate fluctuations
+  bat_scaling_factor: # scaling factor for the battery power, e.g. to account for inverter losses
+    charging: 0.9
+    discharging: 0.9
+  restart_charger_on_reconnect: true # restart charger on reconnect to ensure it applies the new settings
+  send_interval: 5
