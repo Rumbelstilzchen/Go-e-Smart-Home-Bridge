@@ -13,8 +13,29 @@ MQTT:
   password: your-mqtt-password
   cert_file: ca.crt # if needed must be placed alongside this config - if not needed just comment
   input_topics:
-    - SmartHome/Kostal_Piko_BA
-    - SmartHome/Elgris
+    SmartHome/Kostal_Piko_BA:
+      BatStateOfCharge:
+        - 1
+        - min
+      AktHomeConsumptionGrid:
+        - 3
+        - mean
+      EinspeisenPower:
+        - 3
+        - min
+      BatPowerEntLaden:
+        - 3
+        - max
+      BatPowerLaden:
+        - 3
+        - min
+      dcPowerPV:
+        - 3
+        - min
+#    SmartHome/Elgris:
+#      BatPowerLaden:
+#        - 2
+#        - min
   output_topic: SmartHome/GoE-Garage/ids/set
 
 

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections import deque
 from base_logging.base_logging import set_logger
 import json
 import os
@@ -15,11 +16,28 @@ set_logger('logfile_Go-e.log')
 logger = logging.getLogger(__name__)
 logger.info('First Log')
 
+
+def mean(x):
+    if len(x) == 0:
+        return 0
+    return sum(x) / len(x)
+
+FUNCTIONS = {
+    "min": min,
+    "max": max,
+    "sum": sum,
+    "len": len,
+    "avg": mean,
+    "mean": mean,
+}
+
+
 class R_W_mqtt_client:
     def __init__(self, configuration):
         self.config = configuration
         self.mqtt_client = self.setup_mqtt_client(self.config['MQTT'])
-        self.cache = {}
+        self.cache = {val_key: deque(maxlen=length[0])  for topic in self.config['MQTT']['input_topics'] for val_key, length in self.config['MQTT']['input_topics'][topic].items()}
+        self.methods = {val_key: FUNCTIONS.get(length[1],mean) for topic in self.config['MQTT']['input_topics'] for val_key, length in self.config['MQTT']['input_topics'][topic].items()}
         self.output = {}
         self.mqtt_client.loop_start()
         self.running = True
@@ -104,7 +122,10 @@ class R_W_mqtt_client:
     def _on_message(self, client, userdata, msg):
         try:
             current_data = json.loads(msg.payload.decode("utf-8"))
-            self.cache.update(current_data)
+            for key, value in current_data.items():
+                if key in self.cache:
+                    self.cache[key].append(value)
+            # self.cache.update(current_data)
             # print(current_data)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON received: {e}")
@@ -139,12 +160,17 @@ class R_W_mqtt_client:
         if not response.get('ids', False):
             logger.error(f"Failed to publish data via HTTP")
 
+    def cache_get(self, key, default=None):
+        if key in self.cache and len(self.cache[key]) > 0:
+            return self.methods[key](self.cache[key])
+        return default
+
     async def periodic_sender(self, ):
         """Sendet alle 5 Sekunden die letzten Werte aus dem Cache."""
         await asyncio.sleep(20)
         while self.running:
             # calculate offset by BatSOC
-            soc = self.cache.get("BatStateOfCharge", 0)
+            soc = self.cache_get("BatStateOfCharge", 0)
             bat_offset = 0
             offset =self.general_charge_offset
             for soc_limit in self.bat_SOC_charge_offset:
@@ -152,13 +178,13 @@ class R_W_mqtt_client:
                     bat_offset = self.bat_SOC_charge_offset[soc_limit]
                     break
             #print(datetime.now())
-            self.output["pGrid"] = offset + self.cache.get("AktHomeConsumptionGrid", 5000) - self.cache.get("EinspeisenPower", 0)
-            self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
-            self.output["pPv"] = self.cache.get("dcPowerPV", 0)
+            self.output["pGrid"] = offset + self.cache_get("AktHomeConsumptionGrid", 5000) - self.cache_get("EinspeisenPower", 0)
+            self.output["pAkku"] = (self.cache_get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache_get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
+            self.output["pPv"] = self.cache_get("dcPowerPV", 0)
 
             self.publish_method(self.output)
 
-            #print(self.output)
+            # print(self.output)
             # for topic, value in output.items():
             #     client.publish(f"{base_topic}/{topic}", value)
             #     print(f"\t[SEND] {topic}: {value}")
