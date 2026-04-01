@@ -1,0 +1,4 @@
+# MQTT Tool and Project Dependencies
+paho-mqtt>=1.6.0
+PyYAML>=5.1
+urllib3
