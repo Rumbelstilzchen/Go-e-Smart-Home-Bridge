@@ -1,6 +1,6 @@
 # Go-e Smart Home Bridge
 
-This project is a smart home MQTT bridge that controls a Go-e electric vehicle charger based on real-time data from PV inverters (Kostal Piko BA) and battery systems (Elgris). It subscribes to MQTT topics for grid consumption, battery state-of-charge (SOC), and PV power, calculates optimal charging parameters with configurable offsets, and publishes commands to the charger via MQTT or HTTP API.
+This project is a smart home MQTT bridge that controls a Go-e electric vehicle charger based on real-time data from (multiple) PV inverters and battery systems. It subscribes to MQTT topics for grid consumption, battery state-of-charge (SOC), and PV power, calculates optimal charging parameters with configurable offsets, and publishes commands to the charger via MQTT or HTTP API.
 
 ## Architecture Overview
 
