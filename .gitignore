@@ -1,7 +1,7 @@
-config/config.yaml
-config/*.crt
-config_docker/config.yaml
-config_docker/*.crt
-logs/*.log
-logs_docker/*.log
+go-e/config/config.yaml
+go-e/config/*.crt
+go-e/config_docker/config.yaml
+go-e/config_docker/*.crt
+go-e/logs/*.log
+go-e/logs_docker/*.log
 .idea
