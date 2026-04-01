@@ -1,4 +1,6 @@
 config/config.yaml
+config/*.crt
 config_docker/config.yaml
+config_docker/*.crt
 logs/*.log
 logs_docker/*.log
