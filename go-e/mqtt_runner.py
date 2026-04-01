@@ -153,7 +153,7 @@ class R_W_mqtt_client:
                     break
             #print(datetime.now())
             self.output["pGrid"] = offset + self.cache.get("AktHomeConsumptionGrid", 5000) - self.cache.get("EinspeisenPower", 0)
-            self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) - bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
+            self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
             self.output["pPv"] = self.cache.get("dcPowerPV", 0)
 
             self.publish_method(self.output)
