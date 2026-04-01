@@ -1,0 +1,4 @@
+config/config.yaml
+config_docker/config.yaml
+logs/*.log
+logs_docker/*.log
