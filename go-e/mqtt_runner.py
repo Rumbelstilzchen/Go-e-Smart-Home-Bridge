@@ -26,7 +26,7 @@ class R_W_mqtt_client:
         self.shutdown_event = asyncio.Event()
         self.goe_restart_needed = False
         #self.bat_SOC_charge_offset = self.config['charger'].get('bat_SOC_charge_offset', {})
-        self.bat_SOC_charge_offset = dict(sorted(self.config['charger'].get('bat_SOC_charge_offset', {}).items()))
+        self.bat_SOC_charge_offset = {key: abs(value) for key, value in sorted(self.config['charger'].get('bat_SOC_charge_offset', {}).items())}
         self.general_charge_offset = self.config['charger'].get('general_charge_offset', 0)
         self.bat_scaling_factor = {
             'charging': 1.0,
@@ -141,7 +141,7 @@ class R_W_mqtt_client:
 
     async def periodic_sender(self, ):
         """Sendet alle 5 Sekunden die letzten Werte aus dem Cache."""
-
+        await asyncio.sleep(20)
         while self.running:
             # calculate offset by BatSOC
             soc = self.cache.get("BatStateOfCharge", 0)
