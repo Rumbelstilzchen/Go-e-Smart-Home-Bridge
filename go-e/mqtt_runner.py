@@ -5,7 +5,7 @@ import json
 import os
 import paho.mqtt.client as mqtt
 import signal
-from datetime import datetime
+from datetime import datetime, timezone
 import urllib3
 import yaml
 import time
@@ -32,6 +32,8 @@ class R_W_mqtt_client:
             'charging': 1.0,
             'discharging': 1.0
         }
+        self.last_receive = {}
+        self.last_send = datetime.now(tz=timezone.utc).timestamp()
         self.charger_ip = self.config['charger'].get('ip', None)
         self.send_interval = self.config['charger'].get("send_interval", 5)
         self.output_topic = self.config['MQTT'].get("output_topic", None)
@@ -105,6 +107,7 @@ class R_W_mqtt_client:
         try:
             current_data = json.loads(msg.payload.decode("utf-8"))
             self.cache.update(current_data)
+            self.last_receive[msg.topic] = datetime.now(tz=timezone.utc).timestamp()
             # print(current_data)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON received: {e}")
@@ -130,20 +133,38 @@ class R_W_mqtt_client:
     def publish_http(self, data):
         url = rf'http://{self.charger_ip}/api/set?ids={json.dumps(data)}'
         # call url
-        response = json.loads(
-            self.http_pool.request(
-                "GET",
-                url,
-            ).data.decode("utf-8")
-        )
-        if not response.get('ids', False):
-            logger.error(f"Failed to publish data via HTTP")
+        try:
+            response = json.loads(
+                self.http_pool.request(
+                    "GET",
+                    url,
+                ).data.decode("utf-8")
+            )
+            if not response.get('ids', False):
+                logger.error(f"Failed to publish data via HTTP")
+        except (json.JSONDecodeError, urllib3.exceptions.HTTPError):
+            logger.exception(f"HTTP publish error")
+        except Exception:
+            logger.exception(f"Unexpected error in HTTP publish")
 
     async def periodic_sender(self, ):
         """Sendet alle 5 Sekunden die letzten Werte aus dem Cache."""
         await asyncio.sleep(20)
+        time_too_old_counter = 0
         while self.running:
             # calculate offset by BatSOC
+            self.last_send = datetime.now(tz=timezone.utc).timestamp()
+            if any((self.last_send - last_receive) > (3*self.send_interval) for last_receive in self.last_receive.values()):
+                logger.warning("Data is older than 15 seconds, check your MQTT connection and topics!")
+                await asyncio.sleep(self.send_interval)
+                time_too_old_counter += 1
+                if time_too_old_counter >= 10:
+                    logger.warning("Data is older than 15 seconds for 10 consecutive checks, exiting sender loop!")
+                    logger.info('If this is not a temporary MQTT connection issue, check your configuration and MQTT broker!')
+                    logger.info('If "restart: unless-stopped" in docker is active it will soon restart the container and try to reconnect to MQTT broker and charger.')
+                    self.running = False
+                continue
+            time_too_old_counter = 0
             soc = self.cache.get("BatStateOfCharge", 0)
             bat_offset = 0
             offset =self.general_charge_offset
