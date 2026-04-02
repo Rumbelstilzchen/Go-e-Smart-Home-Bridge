@@ -5,7 +5,7 @@ import json
 import os
 import paho.mqtt.client as mqtt
 import signal
-from datetime import datetime, timezone
+from datetime import datetime
 import urllib3
 import yaml
 import time
@@ -33,7 +33,7 @@ class R_W_mqtt_client:
             'discharging': 1.0
         }
         self.last_receive = {}
-        self.last_send = datetime.now(tz=timezone.utc).timestamp()
+        self.last_send = datetime.now().timestamp()
         self.charger_ip = self.config['charger'].get('ip', None)
         self.send_interval = self.config['charger'].get("send_interval", 5)
         self.output_topic = self.config['MQTT'].get("output_topic", None)
@@ -66,7 +66,6 @@ class R_W_mqtt_client:
                 self.restart_charger_on_reconnect = False
                 logger.info('In case of http api a restart of charger after restart of mqtt broker is not needed and deactivated')
         self.publish_method = publish_methods[API]
-
 
     def setup_mqtt_client(self, mqtt_conf):
         client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id=mqtt_conf["client_id"],
@@ -107,12 +106,12 @@ class R_W_mqtt_client:
         try:
             current_data = json.loads(msg.payload.decode("utf-8"))
             self.cache.update(current_data)
-            self.last_receive[msg.topic] = datetime.now(tz=timezone.utc).timestamp()
+            self.last_receive[msg.topic] = datetime.now().timestamp()
             # print(current_data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON received: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error in message handler: {e}")
+        except json.JSONDecodeError:
+            logger.exception(f"Invalid JSON received.")
+        except Exception:
+            logger.exception(f"Unexpected error in message handler.")
 
     def _on_disconnect(self, client, userdata, flags, rc,properties):
         if rc != 0:
@@ -153,13 +152,14 @@ class R_W_mqtt_client:
         time_too_old_counter = 0
         while self.running:
             # calculate offset by BatSOC
-            self.last_send = datetime.now(tz=timezone.utc).timestamp()
+            self.last_send = datetime.now().timestamp()
             if any((self.last_send - last_receive) > (3*self.send_interval) for last_receive in self.last_receive.values()):
                 logger.warning("Data is older than 15 seconds, check your MQTT connection and topics!")
                 await asyncio.sleep(self.send_interval)
                 time_too_old_counter += 1
                 if time_too_old_counter >= 10:
-                    logger.warning("Data is older than 15 seconds for 10 consecutive checks, exiting sender loop!")
+                    outdated_topics = {topic: str(datetime.fromtimestamp(last_receive)) for topic, last_receive in self.last_receive.items() if (self.last_send - last_receive) > (3*self.send_interval) }
+                    logger.warning(f"Data is older than 15 seconds for 10 consecutive checks, exiting sender loop! Topic and las time:\n{outdated_topics}")
                     logger.info('If this is not a temporary MQTT connection issue, check your configuration and MQTT broker!')
                     logger.info('If "restart: unless-stopped" in docker is active it will soon restart the container and try to reconnect to MQTT broker and charger.')
                     self.running = False
