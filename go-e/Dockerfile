@@ -32,5 +32,6 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import logging; logging.info('Container is running')" || exit 1
 
 # Default command - can be overridden
-CMD ["python", "mqtt_runner.py"]
+ENTRYPOINT ["python", "-u"]
+CMD ["mqtt_runner.py"]
 # set via compose: command: ["python", "monitoring_template.py", "Kostal_Piko_BA"]
