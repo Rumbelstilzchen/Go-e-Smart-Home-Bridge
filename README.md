@@ -4,27 +4,40 @@ This project is a smart home MQTT bridge that controls a Go-e electric vehicle c
 
 ## Architecture Overview
 
-Key components:
-- **mqtt_runner.py**: Async main script handling MQTT communication and periodic charger updates.
-- **R_W_mqtt_client class**: Manages MQTT client, caches incoming data, computes outputs (pGrid, pAkku, pPv), and publishes to charger.
-- **base_logging/**: Centralized logging to rotating files in `logs/` directory.
-- **config/config.yaml**: YAML configuration for MQTT broker, charger IP, offsets, and scaling factors.
+## 🎨 Features
 
-Data flow: MQTT input topics → cache → periodic calculation (every `send_interval` seconds) → publish to charger API.
+### Web-Oberfläche
 
-## Installation
+✅ **Live-Werte** (aktualisiert alle 10 Sekunden)
+- Ladeleistung in Watt
+- Phasenmodus (1-phasig / 3-phasig)
+- Energiequelle (Hausakku / Grid)
 
-1. Clone the repository.
-2. Install dependencies: `pip install -r requirements.txt`
-3. Configure the settings in `config/config.yaml` (see Configuration section).
+✅ **Betriebsmodus**
+- BASIC: Normales Laden
+- ECO: Sparmodus
 
-For Docker:
-- Build the image: `docker build -t go-e-bridge .`
-- Run with volumes: `docker run -v /path/to/config_docker:/app/config_docker -v /path/to/logs:/app/logs go-e-bridge`
+✅ **Temporäre Ladepriorität**
+- Datum + Endzeit wählen
+- 15-Minuten-Schritte
+- Auto-Aufhebung nach Ablauf
+- Status-Anzeige mit Countdown
 
-**Data Sources**: For collecting and publishing MQTT data from devices like Kostal Piko BA and Elgris systems, use the companion repository: [https://github.com/Rumbelstilzchen/Monitoring](https://github.com/Rumbelstilzchen/Monitoring).
+✅ **Sicherheit**
+- Benutzername/Passwort-Authentifizierung
+- Session-Management
+- Protected API-Endpoints
 
-## Configuration
+### MQTT-Integration
+
+- Bidirektionale Kommunikation mit MQTT-Broker
+- Status-Abonnement für Live-Werte
+- Command-Publishing für Charger-Befehle
+- TLS/SSL Support für sichere Übertragung
+
+---
+
+## 📂 Projektstruktur
 
 Load config via `load_config()` from `config/config.yaml` (or `config_docker/` for containerized runs).
 

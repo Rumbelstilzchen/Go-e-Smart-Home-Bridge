@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go-e Smart Home Bridge - Login</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card">
+            <h1>Go-e Smart Home Bridge</h1>
+            <p class="subtitle">Charger Control & Monitoring</p>
+
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Benutzername</label>
+                    <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        required
+                        placeholder="Benutzername eingeben"
+                        autocomplete="username"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Passwort</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        required
+                        placeholder="Passwort eingeben"
+                        autocomplete="current-password"
+                    >
+                </div>
+
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+                <button type="submit" class="btn btn-primary btn-large">
+                    Anmelden
+                </button>
+            </form>
+
+            <div class="login-info">
+                <p><strong>Standard-Anmeldedaten:</strong></p>
+                <p>Benutzername: <code>admin</code></p>
+                <p>Passwort: <code>admin</code></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('errorMessage');
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    // Redirect to dashboard
+                    window.location.href = '/';
+                } else {
+                    errorDiv.textContent = 'Ungültige Anmeldedaten';
+                    errorDiv.style.display = 'block';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Anmeldefehler: ' + error.message;
+                errorDiv.style.display = 'block';
+                console.error('Login error:', error);
+            }
+        });
+    </script>
+</body>
+</html>
+

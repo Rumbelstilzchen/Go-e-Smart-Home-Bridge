@@ -4,8 +4,9 @@ from base_logging.base_logging import set_logger
 import json
 import os
 import paho.mqtt.client as mqtt
+from web.web_app import start_server
 import signal
-from datetime import datetime
+from datetime import datetime, UTC
 import urllib3
 import yaml
 import time
@@ -66,6 +67,55 @@ class R_W_mqtt_client:
                 self.restart_charger_on_reconnect = False
                 logger.info('In case of http api a restart of charger after restart of mqtt broker is not needed and deactivated')
         self.publish_method = publish_methods[API]
+        self.parse_mthods_dict = {}
+        self.web_exchange = {'web': self.config.get('web',{}), 'status':{}, 'publisher': self.publish_mqtt_from_web}
+
+    async def web_server_startup(self):
+        await start_server(self.web_exchange)
+
+    def parse_unknown_topic(self, msg):
+        pass
+
+    def parse_input_topic(self, msg):
+        try:
+            current_data = json.loads(msg.payload.decode("utf-8"))
+            self.cache.update(current_data)
+            self.last_receive[msg.topic] = datetime.now().timestamp()
+            # print(current_data)
+
+            if 'dcPowerPV' in current_data:
+
+                self.web_exchange['status']['HomePV'] = round(current_data['AktHomeConsumptionSolar'] / 1000, 1)
+                self.web_exchange['status']['HomeBat'] = round(current_data['AktHomeConsumptionBat'] / 1000, 1)
+                self.web_exchange['status']['HomeGrid'] = round(current_data['AktHomeConsumptionGrid'] / 1000, 1)
+
+        except json.JSONDecodeError:
+            logger.exception(f"Invalid JSON received.")
+        except Exception:
+            logger.exception(f"Unexpected error in message handler.")
+
+    def parse_status_topic(self, msg):
+        try:
+            name = self.config['MQTT']["status_topics"][msg.topic].get('name', None)
+            if name is None:
+                logger.error(f"Invalid MQTT status topic: {msg.topic}")
+                return
+            payload=msg.payload.decode("utf-8")
+            current_data = json.loads(payload)
+            if 'codes' in self.config['MQTT']["status_topics"][msg.topic]:
+                current_data = self.config['MQTT']["status_topics"][msg.topic]['codes'].get(current_data, f'unknown {current_data}')
+            if 'elements' in self.config['MQTT']["status_topics"][msg.topic]:
+                current_data = [val for i, val in enumerate(current_data) if i in self.config['MQTT']["status_topics"][msg.topic]['elements']]
+                phases = sum(i> 100 for i in current_data )
+                current_data = round(sum(i for i in current_data )/1000,1)
+                self.web_exchange['status']['phases'] = phases
+            self.web_exchange['status'][name] = current_data
+            self.web_exchange['status']["timestamp"] = datetime.now().isoformat()
+            # print(current_data)
+        except json.JSONDecodeError:
+            logger.exception(f"Invalid JSON received.")
+        except Exception:
+            logger.exception(f"Unexpected error in message handler.")
 
     def setup_mqtt_client(self, mqtt_conf):
         client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id=mqtt_conf["client_id"],
@@ -101,13 +151,15 @@ class R_W_mqtt_client:
         for topic in self.config['MQTT']["input_topics"]:
             client.subscribe(topic, 0)
             logger.info(f"Subscribed to {topic}")
+            self.parse_mthods_dict[topic] = self.parse_input_topic
+        for topic in self.config['MQTT'].get('status_topics',{}):
+            client.subscribe(topic, 0)
+            logger.info(f"Subscribed to {topic}")
+            self.parse_mthods_dict[topic] = self.parse_status_topic
 
     def _on_message(self, client, userdata, msg):
         try:
-            current_data = json.loads(msg.payload.decode("utf-8"))
-            self.cache.update(current_data)
-            self.last_receive[msg.topic] = datetime.now().timestamp()
-            # print(current_data)
+            self.parse_mthods_dict.get(msg.topic, self.parse_unknown_topic)(msg)
         except json.JSONDecodeError:
             logger.exception(f"Invalid JSON received.")
         except Exception:
@@ -125,6 +177,28 @@ class R_W_mqtt_client:
         # time.sleep(self.config['MQTT']['send_interval'] + 1)  # Warten, bis der Sender-Task sicher beendet ist
         self.mqtt_client.disconnect()
         self.shutdown_event.set()
+
+    def publish_mqtt_from_web(self, command_type, value):
+
+        topics = self.config['MQTT'].get("command_topics", {})
+        if command_type not in topics:
+            logger.error(f"Unknown command type: {command_type}")
+            return False
+
+        topic = topics[command_type]['topic']
+        if 'codes' in topics[command_type]:
+            value = topics[command_type]['codes'].get(value, None)
+        if value is None:
+            return False
+
+        try:
+            self.mqtt_client.publish(topic, value, qos=1)
+            logger.info(f"Published {command_type}: {value} to {topic}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to publish command: {e}")
+            return False
+        self.mqtt_client.publish(topic, json.dumps(data))
 
     def publish_mqtt(self, data):
         self.mqtt_client.publish(self.output_topic, json.dumps(data))
@@ -145,6 +219,15 @@ class R_W_mqtt_client:
             logger.exception(f"HTTP publish error")
         except Exception:
             logger.exception(f"Unexpected error in HTTP publish")
+    def car_hasprio(self):
+        override = self.web_exchange.get('override', None)
+        if override is None:
+            return False
+        if override['end_time'] < datetime.now(UTC):
+            self.web_exchange['override']=None
+            logger.info('Home-Akku has prio again - set by runner')
+            return False
+        return True
 
     async def periodic_sender(self, ):
         """Sendet alle 5 Sekunden die letzten Werte aus dem Cache."""
@@ -168,10 +251,13 @@ class R_W_mqtt_client:
             soc = self.cache.get("BatStateOfCharge", 0)
             bat_offset = 0
             offset =self.general_charge_offset
-            for soc_limit in self.bat_SOC_charge_offset:
-                if soc < soc_limit:
-                    bat_offset = self.bat_SOC_charge_offset[soc_limit]
-                    break
+            if not self.car_hasprio():
+                for soc_limit in self.bat_SOC_charge_offset:
+                    if soc < soc_limit:
+                        bat_offset = self.bat_SOC_charge_offset[soc_limit]
+                        break
+            # else:
+            #     print('override_active')
             #print(datetime.now())
             self.output["pGrid"] = offset + self.cache.get("AktHomeConsumptionGrid", 5000) - self.cache.get("EinspeisenPower", 0)
             self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
@@ -201,6 +287,7 @@ async def main():
     sender_task = asyncio.create_task(mqtt_class.periodic_sender())
     shutdown_task = asyncio.create_task(mqtt_class.shutdown_event.wait())
     # Warten auf Shutdown oder Task-Ende
+    await mqtt_class.web_server_startup()
     await asyncio.wait([sender_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED)
     logger.info("Shutting down gracefully")
 

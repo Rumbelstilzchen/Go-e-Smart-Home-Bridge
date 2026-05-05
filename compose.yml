@@ -11,6 +11,9 @@ services:
     volumes:
       - ./go-e/config_docker:/app/config:ro
       - ./go-e/logs_docker:/app/logs
+    # Web interface port mapping (optional: change 8080 to desired external port)
+    ports:
+      - "8080:80"
     restart: unless-stopped
     # Logging
     logging:
