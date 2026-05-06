@@ -28,7 +28,7 @@ USER appuser
 RUN pip install -r requirements.txt
 
 # Expose web interface port
-EXPOSE 80
+EXPOSE 8080
 
 # Healthcheck (optional)
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \

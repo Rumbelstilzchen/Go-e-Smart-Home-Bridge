@@ -38,7 +38,7 @@ html, body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     background-color: var(--color-bg);
     color: var(--color-text);
-    line-height: 1.5;
+    line-height: 1.3;
 }
 
 /* ==================== Utilities ==================== */
@@ -242,7 +242,7 @@ html, body {
 
 .status-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
 }
@@ -281,7 +281,7 @@ html, body {
 .status-values {
     font-size: 1.1rem;
     font-weight: 650;
-    margin-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
     font-variant-numeric: tabular-nums;
 }
 
@@ -319,6 +319,23 @@ html, body {
     color: var(--color-danger);
 }
 
+/* ==================== Setting Section ==================== */
+
+.settings-grid {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+}
+
+.settings-card {
+    background: linear-gradient(135deg, rgb(102 126 234 / 0.17) 0%, rgb(118 75 162 / 0.17) 100%);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    transition: var(--transition);
+}
+
 /* ==================== Mode Selector ==================== */
 
 .mode-selector {
@@ -328,6 +345,7 @@ html, body {
 }
 
 /* ==================== Override Form ==================== */
+
 
 .override-status {
     margin-bottom: var(--spacing-lg);
@@ -459,6 +477,10 @@ html, body {
         grid-template-columns: 1fr;
     }
 
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+
     .mode-selector {
         flex-direction: column;
     }
@@ -490,6 +512,9 @@ html, body {
     }
 
     .status-card {
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    .settings-card {
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
     }
 }

@@ -19,11 +19,44 @@ let modeState = null;
 
 function initializeTimePickerOptions() {
     const timeSelect = document.getElementById('overrideTime');
+    const dateInput = document.getElementById('overrideDate');
+
+    // Clear existing options
+    timeSelect.innerHTML = '';
+
+    // Add placeholder option
+    const placeholderOption = document.createElement('option');
+    placeholderOption.value = '';
+    placeholderOption.textContent = '-- Zeit wählen --';
+    placeholderOption.disabled = true;
+    placeholderOption.selected = true;
+    timeSelect.appendChild(placeholderOption);
+
+    // Get the selected date
+    const selectedDateStr = dateInput.value; // YYYY-MM-DD
+    const selectedDate = new Date(`${selectedDateStr}T00:00:00`);
+
+    // Get today's date
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    // Determine start hour and minute
+    let startHour = 0;
+    let startMinute = 0;
+
+    if (selectedDateStr === todayStr) {
+        // If selected date is today, start from next 15-minute interval after current time
+        startHour = today.getHours();
+        startMinute = Math.ceil(today.getMinutes() / 15) * 15;
+        if (startMinute >= 60) {
+            startMinute = 0;
+            startHour++;
+        }
+    }
 
     // Generate time options in 15-minute intervals
-    const now = new Date();
-    for (let hour = now.getHours(); hour < 24; hour++) {
-        for (let minute = (hour === now.getHours() ? Math.ceil(now.getMinutes() / 15) * 15 : 0); minute < 60; minute += 15) {
+    for (let hour = startHour; hour < 24; hour++) {
+        for (let minute = (hour === startHour ? startMinute : 0); minute < 60; minute += 15) {
             const option = document.createElement('option');
             const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
             option.value = timeStr;
@@ -55,6 +88,20 @@ async function fetchLiveValues() {
         return await response.json();
     } catch (error) {
         console.error('Error fetching live values:', error);
+        return null;
+    }
+}
+
+async function fetchOverrideStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/override/status`);
+        if (response.status === 401) {
+            redirectToLogin();
+            return null;
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching override status values:', error);
         return null;
     }
 }
@@ -176,23 +223,30 @@ function updateLiveValues(data) {
     document.getElementById('powerValue').textContent = powerValue + ' kW';
 
     // Phases
-    const phasesValue = data.phases || '--';
-    document.getElementById('phasesValue').textContent = phasesValue;
+    // const phasesValue = data.phases || '--';
+    document.getElementById('phasesValue').textContent = data.phases || '--';
 
-    // Source
-    const sourceValueHomePV = data.HomePV || '--';
-    document.getElementById('sourceValueHomePV').textContent = 'PV: ' + sourceValueHomePV + ' kW';
-    const sourceValueHomeBat = data.HomeBat || '--';
-    document.getElementById('sourceValueHomeBat').textContent = 'Akku: ' + sourceValueHomeBat + ' kW';
-    const sourceValueHomeGrid = data.HomeGrid || '--';
-    document.getElementById('sourceValueHomeGrid').textContent = 'Netz: ' + sourceValueHomeGrid + ' kW';
+    // Consumption
+    const consumptionHomePvValue = data.HomePV || '--';
+    document.getElementById('consumptionHomePvValue').textContent = 'PV: ' + consumptionHomePvValue + ' kW';
+    const consumptionHomeBatValue = data.HomeBat || '--';
+    document.getElementById('consumptionHomeBatValue').textContent = 'Akku: ' + consumptionHomeBatValue + ' kW';
+    const consumptionHomeGridValue = data.HomeGrid || '--';
+    document.getElementById('consumptionHomeGridValue').textContent = 'Netz: ' + consumptionHomeGridValue + ' kW';
+
+    // PV State
+    const statePvPowerValue = data.HomePVDC || '--';
+    document.getElementById('statePvPowerValue').textContent = 'PV: ' + statePvPowerValue + ' kW';
+    const stateSocValue = data.HomeSOC || '--';
+    document.getElementById('stateSocValue').textContent = 'Akku: ' + stateSocValue + ' %';
 
     // Mode
-    const modeValue = data.mode || '--';
-    document.getElementById('modeValue').textContent = modeValue;
+    //const modeValue = data.mode || '--';
+    document.getElementById('modeValue').textContent = data.mode || '--';
 
     // Last update
-    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
+    //document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('de-DE');
+    document.getElementById('lastUpdate').textContent = new Date(data.timestamp).toLocaleTimeString('de-DE');
 }
 
 function updateOverrideStatus(overrideInfo) {
@@ -287,6 +341,9 @@ function setupEventListeners() {
     document.getElementById('setOverrideBtn').addEventListener('click', setOverride);
     document.getElementById('clearOverrideBtn').addEventListener('click', clearOverride);
 
+    // Date picker - refresh time options when date changes
+    document.getElementById('overrideDate').addEventListener('change', initializeTimePickerOptions);
+
     // Logout button
     document.getElementById('logoutBtn').addEventListener('click', logout);
 }
@@ -301,6 +358,12 @@ async function refreshData() {
     }
 }
 
+async function refreshOverrideStatus() {
+    // Fetch and update override status
+    const overrideInfo = await fetchOverrideStatus();
+    updateOverrideStatus(overrideInfo);
+}
+
 function redirectToLogin() {
     window.location.href = '/login';
 }
@@ -310,16 +373,18 @@ function redirectToLogin() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Dashboard initializing...');
 
-    // Setup UI
-    initializeTimePickerOptions();
+    // Setup UI (initialize date picker first, so dateInput has a value)
     initializeOverrideDatePicker();
+    initializeTimePickerOptions();
     setupEventListeners();
 
     // Initial data refresh
     refreshData();
+    refreshOverrideStatus();
 
     // Set up periodic refresh
     setInterval(refreshData, REFRESH_INTERVAL);
+    setInterval(refreshOverrideStatus, OVERRIDE_CHECK_INTERVAL);
 
     console.log('Dashboard ready');
 });

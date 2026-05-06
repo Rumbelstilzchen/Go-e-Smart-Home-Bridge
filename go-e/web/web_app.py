@@ -245,13 +245,6 @@ async def set_override(request: OverrideRequest, username: str = Depends(verify_
         if _override_manager.set_override(end_time, start_time):
             logger.info(f"Override set by user {username}")
 
-            # Publish override command via MQTT
-            override_data = {
-                "end_time": end_time.isoformat(),
-                "start_time": (start_time or datetime.now(UTC)).isoformat(),
-                "battery_priority": False
-            }
-
             return {
                 "success": True,
                 "message": "Override set successfully",
@@ -277,10 +270,7 @@ async def set_override(request: OverrideRequest, username: str = Depends(verify_
 @app.get("/api/override/status")
 async def get_override_status(username: str = Depends(verify_session)):
     """Get current override status."""
-    return {
-        "override": _override_manager.get_override_info(),
-        "is_active": _override_manager.is_override_active()
-    }
+    return _override_manager.get_override_info()
 
 @app.delete("/api/override")
 async def clear_override( username: str = Depends(verify_session)):

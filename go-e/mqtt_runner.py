@@ -88,6 +88,9 @@ class R_W_mqtt_client:
                 self.web_exchange['status']['HomePV'] = round(current_data['AktHomeConsumptionSolar'] / 1000, 1)
                 self.web_exchange['status']['HomeBat'] = round(current_data['AktHomeConsumptionBat'] / 1000, 1)
                 self.web_exchange['status']['HomeGrid'] = round(current_data['AktHomeConsumptionGrid'] / 1000, 1)
+                self.web_exchange['status']['HomeSOC'] = current_data['BatStateOfCharge']
+                self.web_exchange['status']['HomePVDC'] = round(current_data['dcPowerPV'] / 1000, 1)
+                self.web_exchange['status']["timestamp"] = datetime.now(UTC).isoformat()
 
         except json.JSONDecodeError:
             logger.exception(f"Invalid JSON received.")
@@ -110,7 +113,7 @@ class R_W_mqtt_client:
                 current_data = round(sum(i for i in current_data )/1000,1)
                 self.web_exchange['status']['phases'] = phases
             self.web_exchange['status'][name] = current_data
-            self.web_exchange['status']["timestamp"] = datetime.now().isoformat()
+            self.web_exchange['status']["timestamp"] = datetime.now(UTC).isoformat()
             # print(current_data)
         except json.JSONDecodeError:
             logger.exception(f"Invalid JSON received.")
@@ -263,7 +266,7 @@ class R_W_mqtt_client:
             self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
             self.output["pPv"] = self.cache.get("dcPowerPV", 0)
 
-            self.publish_method(self.output)
+            #self.publish_method(self.output)
 
             #print(self.output)
             # for topic, value in output.items():
