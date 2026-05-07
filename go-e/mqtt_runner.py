@@ -233,12 +233,12 @@ class R_W_mqtt_client:
             logger.exception(f"HTTP publish error")
         except Exception:
             logger.exception(f"Unexpected error in HTTP publish")
-    def car_hasprio(self):
-        override = self.web_exchange.get('override', None)
-        if override is None:
+    def car_has_prio(self):
+        override = self.web_exchange.get('override', {})
+        if not override.get('active', False):
             return False
         if override['end_time'] < datetime.now(UTC):
-            self.web_exchange['override']=None
+            self.web_exchange['override'] = {}
             logger.info('Home-Akku has prio again - set by runner')
             return False
         return True
@@ -265,7 +265,7 @@ class R_W_mqtt_client:
             soc = self.cache.get("BatStateOfCharge", 0)
             bat_offset = 0
             offset =self.general_charge_offset
-            if not self.car_hasprio():
+            if not self.car_has_prio():
                 for soc_limit in self.bat_SOC_charge_offset:
                     if soc < soc_limit:
                         bat_offset = self.bat_SOC_charge_offset[soc_limit]

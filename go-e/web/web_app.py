@@ -9,8 +9,9 @@ import time
 from datetime import datetime, UTC
 from typing import Optional
 from pathlib import Path
+from collections import defaultdict
 
-from fastapi import FastAPI, Depends, HTTPException, status, Cookie
+from fastapi import FastAPI,Depends, Header, HTTPException, status, Cookie, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,41 +47,53 @@ static_path = Path(__file__).parent / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-
-_exchange_data: dict | None = None
+_exchange_data: dict  = {}
 _auth_manager: AuthManager | None = None
 _override_manager: OverrideManager | None = None
 _web_config: dict | None = None
 _uvicorn_server: uvicorn.Server | None = None
 _server_thread: threading.Thread | None = None
 
+# Rate limiting for login attempts
+_login_attempts: dict = defaultdict(list)  # IP -> [timestamps]
+_login_lock = threading.Lock()
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_ATTEMPT_WINDOW = 300  # 5 minutes
+
 async def start_server(exchange_data):
     """Initialize application components."""
-
-    # Initialize auth manager
     global _exchange_data, _web_config, _auth_manager, _override_manager, _uvicorn_server, _server_thread
+
+    # Thread-safe initialization
+
     _exchange_data = exchange_data
     _web_config = _exchange_data.get("web", {})
+
     _auth_manager = AuthManager(_web_config.get("auth", {}))
     _override_manager = OverrideManager(_exchange_data)
+
+    # Configure CORS with web config
+    allowed_origins = [
+        "http://localhost",
+        "http://localhost:80",
+        "http://127.0.0.1",
+        "http://127.0.0.1:80",
+    ]
+    cors_config = _web_config.get("cors", {})
+    if cors_config.get("allowed_origins"):
+        allowed_origins.extend(cors_config.get("allowed_origins", []))
+
+    # Update CORS middleware
+    for middleware in app.user_middleware:
+        if middleware.cls == CORSMiddleware:
+            middleware.options["allow_origins"] = allowed_origins
+
     logger.info("Application initialized successfully")
 
     host = _web_config.get('host', '0.0.0.0')
     port = _web_config.get('port', 80)
 
     try:
-        # server_config = uvicorn.Config(app, host=host, port=port, log_level='warning', access_log=False)
-
         server_config = uvicorn.Config(
             app,
             host=host,
@@ -88,15 +101,15 @@ async def start_server(exchange_data):
             log_level="info",
             loop="asyncio",
             lifespan="on",
-            access_log = False
+            access_log=False,
+            ssl_keyfile=_web_config.get('ssl_keyfile'),
+            ssl_certfile=_web_config.get('ssl_certfile'),
         )
 
         _uvicorn_server = uvicorn.Server(server_config)
 
-        # Startet den Server NICHT blockierend
+        # Start server non-blocking
         asyncio.create_task(_uvicorn_server.serve())
-
-
 
         for _ in range(20):
             if _uvicorn_server.started:
@@ -104,8 +117,9 @@ async def start_server(exchange_data):
             await asyncio.sleep(0.5)
 
         if _uvicorn_server.started:
-            host_print = 'localhost' if host=="0.0.0.0" else host
-            logger.info(f"Starting uvicorn server on http://{host_print}:{port}")
+            host_print = 'localhost' if host == "0.0.0.0" else host
+            protocol = 'https' if _web_config.get('ssl_certfile') else 'http'
+            logger.info(f"Starting uvicorn server on {protocol}://{host_print}:{port}")
         else:
             logger.warning('Server did not start in time')
     except Exception:
@@ -138,6 +152,32 @@ def verify_session(session_token: Optional[str] = Cookie(None)):
 
     return username
 
+
+def check_login_rate_limit(client_ip: str) -> bool:
+    """
+    Check if client has exceeded login attempt rate limit.
+
+    Args:
+        client_ip: Client IP address
+
+    Returns:
+        bool: True if within limits, False if exceeded
+    """
+    current_time = time.time()
+
+    with _login_lock:
+        # Clean old attempts
+        _login_attempts[client_ip] = [
+            t for t in _login_attempts[client_ip]
+            if current_time - t < LOGIN_ATTEMPT_WINDOW
+        ]
+
+        if len(_login_attempts[client_ip]) >= MAX_LOGIN_ATTEMPTS:
+            return False
+
+        _login_attempts[client_ip].append(current_time)
+        return True
+
 # ==================== Routes ====================
 
 @app.get("/", response_class=HTMLResponse)
@@ -161,8 +201,24 @@ async def login_page():
     return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
 
 @app.post("/api/login")
-async def login(request: LoginRequest):
+async def login(request: LoginRequest, request2:Request, ):
     """Authenticate user and create session."""
+    # Rate limiting check
+    # if not check_login_rate_limit("127.0.0.1"):  # In production, use request.client.host
+    ips = [ request2.headers.get("X-Real-IP") , request2.headers.get("X-Forwarded-For") , request2.client.host]
+    real_ip = None
+    for ip in ips:
+        if ip is not None:
+            real_ip = ip
+            break
+
+    if not check_login_rate_limit(real_ip):  # In production, use request.client.host
+        logger.warning(f"Login rate limit exceeded for user: {request.username}")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later."
+        )
+
     if not _auth_manager.validate_credentials(request.username, request.password):
         logger.warning(f"Failed login attempt for user: {request.username}")
         raise HTTPException(
@@ -177,7 +233,8 @@ async def login(request: LoginRequest):
         value=session_token,
         max_age=_auth_manager.session_timeout * 60,
         httponly=True,
-        samesite="lax"
+        samesite="strict",
+        secure=_web_config.get('use_https', False)
     )
     return response
 
@@ -191,10 +248,10 @@ async def logout(session_token: Optional[str] = Cookie(None)):
     return response
 
 @app.get("/api/mqtt_status")
-async def get_status( username: str = Depends(verify_session)):
-    """Get current charger status and live values."""
+async def get_status(username: str = Depends(verify_session)):
+    """Get current MQTT connection status."""
     try:
-        return _exchange_data['status'].get('mqtt_status',False)
+        return _exchange_data.get('status', {}).get('mqtt_status', False)
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         raise HTTPException(
@@ -203,22 +260,15 @@ async def get_status( username: str = Depends(verify_session)):
         )
 
 @app.get("/api/username")
-async def get_username( username: str = Depends(verify_session)):
-    """Get current charger status and live values."""
-    try:
-        return username
-    except Exception as e:
-        logger.error(f"Error getting status: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get status"
-        )
+async def get_username(username: str = Depends(verify_session)):
+    """Get current authenticated username."""
+    return username
 
 @app.get("/api/live")
 async def get_live_values(username: str = Depends(verify_session)):
     """Get live charger values."""
     try:
-        return _exchange_data['status']
+        return _exchange_data.get('status', {})
     except Exception as e:
         logger.error(f"Error getting live values: {e}")
         raise HTTPException(
@@ -288,7 +338,7 @@ async def clear_override( username: str = Depends(verify_session)):
         )
 
 @app.post("/api/mode/set")
-async def set_mode( request: ModeRequest, username: str = Depends(verify_session)):
+async def set_mode(request: ModeRequest, username: str = Depends(verify_session)):
     """Set charger mode (BASIC or ECO)."""
     if request.mode not in ["BASIC", "ECO"]:
         raise HTTPException(
@@ -297,7 +347,15 @@ async def set_mode( request: ModeRequest, username: str = Depends(verify_session
         )
 
     try:
-        if _exchange_data['publisher']("mode", request.mode):
+        publisher = _exchange_data.get('publisher')
+        if not publisher:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="MQTT publisher not available"
+            )
+
+        # Call publisher outside lock
+        if publisher("mode", request.mode):
             logger.info(f"Mode set to {request.mode} by user {username}")
             return {
                 "success": True,
@@ -309,6 +367,8 @@ async def set_mode( request: ModeRequest, username: str = Depends(verify_session
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="MQTT client not connected"
             )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error setting mode: {e}")
         raise HTTPException(

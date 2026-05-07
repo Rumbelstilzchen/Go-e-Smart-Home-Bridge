@@ -6,11 +6,11 @@ Handles time-based overrides for vehicle charging with battery prioritization di
 import logging
 from datetime import datetime, timedelta, UTC
 from typing import Optional, Dict
-import json
-import os
+import threading
 
 logger = logging.getLogger(__name__)
 
+_override_lock = threading.Lock()
 
 class OverrideManager:
     """Manages temporary overrides of the charging logic."""
@@ -24,7 +24,7 @@ class OverrideManager:
             state_file: File to persist override state
         """
         self.config = config
-        self.override: Optional[Dict] = None
+        self.override: dict = {}
         self.load_state()
 
     def set_override(self, end_time: datetime, start_time: Optional[datetime] = None) -> bool:
@@ -45,14 +45,15 @@ class OverrideManager:
             logger.warning("Override end time must be after start time")
             return False
 
-        self.override = {
-            "start_time": start_time,
-            "end_time": end_time,
-            "created_at": datetime.now(UTC),
-            "active": True
-        }
+        with _override_lock:
+            self.override = {
+                "start_time": start_time,
+                "end_time": end_time,
+                "created_at": datetime.now(UTC),
+                "active": True
+            }
 
-        self.save_state()
+            self.save_state()
         logger.info(f"Override set: {start_time} -> {end_time}")
         return True
 
@@ -63,7 +64,7 @@ class OverrideManager:
         Returns:
             bool: True if override is active and not expired
         """
-        if self.override is None or not self.override.get("active", False):
+        if not self.override.get("active", False):
             return False
 
         try:
@@ -125,11 +126,12 @@ class OverrideManager:
         Returns:
             bool: True if override was cleared
         """
-        if self.override is not None:
-            self.override = None
-            self.save_state()
-            logger.info('Home-Akku has prio again - set by web_server')
-            return True
+        with _override_lock:
+            if self.override:
+                self.override = {}
+                self.save_state()
+                logger.info('Home-Akku has prio again - set by web_server')
+                return True
         return False
 
     def save_state(self):
@@ -138,5 +140,4 @@ class OverrideManager:
 
     def load_state(self):
         """Load override state from file."""
-        self.override = self.config.get('override',None)
-
+        self.override = self.config.get('override', {})
