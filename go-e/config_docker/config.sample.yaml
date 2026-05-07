@@ -62,10 +62,18 @@ web:
   port: 8080
   host: "0.0.0.0"
   # Authentication credentials (username: password_hash)
-  # Default: admin/admin (password hash via bcrypt)
   auth:
     users:
-      admin: "admin"  # Change this!
+      admin: "admin"  # Change this to a secure password or bcrypt hash!
     session_timeout_minutes: 60
-
+  trusted_hosts:
+    - "localhost"
+    - "127.0.0.1"
+    - "192.168.x.xx"
+    - "car.mydomain.de"  # Your public domain for accessing the web interface from outside your local network
+  cors:
+    allowed_origins:
+      - "https://car.mydomain.de"
+  # Cookie security
+  use_https: true  # Because proxy handles HTTPS
 

@@ -15,6 +15,7 @@ from fastapi import FastAPI,Depends, Header, HTTPException, status, Cookie, Requ
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
 import yaml
 from web.auth import AuthManager
@@ -72,12 +73,22 @@ async def start_server(exchange_data):
     _auth_manager = AuthManager(_web_config.get("auth", {}))
     _override_manager = OverrideManager(_exchange_data)
 
+    # Add TrustedHost middleware for reverse proxy
+    host = _web_config.get('host', '0.0.0.0')
+    port = _web_config.get('port', 80)
+
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=_web_config.get("trusted_hosts", ["*"])  # Configure in config.yaml
+    )
     # Configure CORS with web config
     allowed_origins = [
         "http://localhost",
         "http://localhost:80",
+        f"http://localhost:{port}",
         "http://127.0.0.1",
         "http://127.0.0.1:80",
+        f"http://127.0.0.1:{port}",
     ]
     cors_config = _web_config.get("cors", {})
     if cors_config.get("allowed_origins"):
@@ -90,8 +101,6 @@ async def start_server(exchange_data):
 
     logger.info("Application initialized successfully")
 
-    host = _web_config.get('host', '0.0.0.0')
-    port = _web_config.get('port', 80)
 
     try:
         server_config = uvicorn.Config(
@@ -200,27 +209,43 @@ async def login_page():
             return f.read()
     return HTMLResponse(content="<h1>Login page not found</h1>", status_code=404)
 
+
+def get_client_ip(request: Request) -> str:
+    """
+    Extract client IP with reverse proxy support.
+
+    Priority:
+    1. X-Real-IP (nginx/apache sets this to original client)
+    2. X-Forwarded-For (first IP is original client)
+    3. request.client.host (direct connection)
+    """
+    # Try X-Real-IP first (most reliable for reverse proxy)
+    if real_ip := request.headers.get("X-Real-IP"):
+        return real_ip.strip()
+
+    # Try X-Forwarded-For (can be comma-separated list)
+    if forwarded := request.headers.get("X-Forwarded-For"):
+        # Take first IP (original client), strip whitespace
+        return forwarded.split(",")[0].strip()
+
+    # Fallback to direct connection
+    return request.client.host if request.client else "unknown"
+
 @app.post("/api/login")
 async def login(request: LoginRequest, request2:Request, ):
     """Authenticate user and create session."""
     # Rate limiting check
     # if not check_login_rate_limit("127.0.0.1"):  # In production, use request.client.host
-    ips = [ request2.headers.get("X-Real-IP") , request2.headers.get("X-Forwarded-For") , request2.client.host]
-    real_ip = None
-    for ip in ips:
-        if ip is not None:
-            real_ip = ip
-            break
-
+    real_ip = get_client_ip(request2)
     if not check_login_rate_limit(real_ip):  # In production, use request.client.host
-        logger.warning(f"Login rate limit exceeded for user: {request.username}")
+        logger.warning(f"Login rate limit exceeded for user: {request.username} of {real_ip}")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many login attempts. Please try again later."
         )
 
     if not _auth_manager.validate_credentials(request.username, request.password):
-        logger.warning(f"Failed login attempt for user: {request.username}")
+        logger.warning(f"Failed login attempt (wrong PW) for user: {request.username} at {real_ip}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"

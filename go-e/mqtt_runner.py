@@ -277,7 +277,7 @@ class R_W_mqtt_client:
             self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
             self.output["pPv"] = self.cache.get("dcPowerPV", 0)
 
-            #self.publish_method(self.output)
+            self.publish_method(self.output)
 
             #print(self.output)
             # for topic, value in output.items():

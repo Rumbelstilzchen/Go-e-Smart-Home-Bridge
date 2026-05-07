@@ -28,6 +28,18 @@ This project is a smart home MQTT bridge that controls a Go-e electric vehicle c
 - Session-Management
 - Protected API-Endpoints
 
+✅ **REverse Proxy**
+empfohlen für sichere Bereitstellung (z.B. Nginx mit TLS)
+```
+location / {
+    proxy_pass http://docker_container:8080;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Host $host;
+}
+```
+
 ### MQTT-Integration
 
 - Bidirektionale Kommunikation mit MQTT-Broker
