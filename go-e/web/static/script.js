@@ -106,6 +106,20 @@ async function fetchOverrideStatus() {
     }
 }
 
+async function fetchMqttStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/mqtt_status`);
+        if (response.status === 401) {
+            redirectToLogin();
+            return null;
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching override status values:', error);
+        return null;
+    }
+}
+
 async function setMode(mode) {
     try {
         const response = await fetch(`${API_BASE}/mode/set`, {
@@ -364,6 +378,12 @@ async function refreshOverrideStatus() {
     updateOverrideStatus(overrideInfo);
 }
 
+async function refreshMqttStatus() {
+    // Fetch and update override status
+    const MqttStatus = await fetchMqttStatus();
+    updateMQTTStatus(MqttStatus);
+}
+
 function redirectToLogin() {
     window.location.href = '/login';
 }
@@ -381,9 +401,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial data refresh
     refreshData();
     refreshOverrideStatus();
+    refreshMqttStatus();
 
     // Set up periodic refresh
     setInterval(refreshData, REFRESH_INTERVAL);
+    setInterval(refreshMqttStatus, REFRESH_INTERVAL);
     setInterval(refreshOverrideStatus, OVERRIDE_CHECK_INTERVAL);
 
     console.log('Dashboard ready');

@@ -29,6 +29,9 @@ MQTT:
       codes:
         3: basic
         4: eco
+    SmartHome/GoE-Garage/pgrid:
+      name: mqtt_status
+      type: 'none'
   # Topics for web interface commands
   command_topics:
     mode:

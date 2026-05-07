@@ -190,36 +190,17 @@ async def logout(session_token: Optional[str] = Cookie(None)):
     response.delete_cookie("session_token")
     return response
 
-# @app.get("/api/status")
-# async def get_status( username: str = Depends(verify_session)):
-#     """Get current charger status and live values."""
-#     try:
-#         status_data = _exchange_data['status']
-#         # Parse status values
-#         parsed_status = {}
-#         for topic, data in status_data.items():
-#             if isinstance(data, dict):
-#                 parsed_status[topic] = {
-#                     "value": data.get("value"),
-#                     "timestamp": data.get("timestamp"),
-#                     "parsed": data.get("parsed")
-#                 }
-#
-#         # Add override status
-#         override_info = _override_manager.get_override_info()
-#
-#         return {
-#             "status": parsed_status,
-#             "override": override_info,
-#             #"mqtt_connected": self.mqtt_client.connected,
-#             "timestamp": datetime.now().isoformat()
-#         }
-#     except Exception as e:
-#         logger.error(f"Error getting status: {e}")
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="Failed to get status"
-#         )
+@app.get("/api/mqtt_status")
+async def get_status( username: str = Depends(verify_session)):
+    """Get current charger status and live values."""
+    try:
+        return _exchange_data['status'].get('mqtt_status',False)
+    except Exception as e:
+        logger.error(f"Error getting status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get status"
+        )
 
 @app.get("/api/live")
 async def get_live_values(username: str = Depends(verify_session)):

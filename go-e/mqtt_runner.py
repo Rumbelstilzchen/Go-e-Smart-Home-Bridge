@@ -11,10 +11,18 @@ import urllib3
 import yaml
 import time
 
+import math
 
 set_logger('logfile_Go-e.log')
 logger = logging.getLogger(__name__)
 logger.info('First Log')
+
+
+def round_sig(x, sig=3):
+    if x == 0:
+        return 0
+    return round(x, sig - 1 - int(math.floor(math.log10(abs(x)))))
+
 
 class R_W_mqtt_client:
     def __init__(self, configuration):
@@ -85,11 +93,11 @@ class R_W_mqtt_client:
 
             if 'dcPowerPV' in current_data:
 
-                self.web_exchange['status']['HomePV'] = round(current_data['AktHomeConsumptionSolar'] / 1000, 1)
-                self.web_exchange['status']['HomeBat'] = round(current_data['AktHomeConsumptionBat'] / 1000, 1)
-                self.web_exchange['status']['HomeGrid'] = round(current_data['AktHomeConsumptionGrid'] / 1000, 1)
+                self.web_exchange['status']['HomePV'] = round_sig(current_data['AktHomeConsumptionSolar'] / 1000, 2)
+                self.web_exchange['status']['HomeBat'] = round_sig(current_data['AktHomeConsumptionBat'] / 1000, 2)
+                self.web_exchange['status']['HomeGrid'] = round_sig(current_data['AktHomeConsumptionGrid'] / 1000, 2)
                 self.web_exchange['status']['HomeSOC'] = current_data['BatStateOfCharge']
-                self.web_exchange['status']['HomePVDC'] = round(current_data['dcPowerPV'] / 1000, 1)
+                self.web_exchange['status']['HomePVDC'] = round_sig(current_data['dcPowerPV'] / 1000, 2)
                 self.web_exchange['status']["timestamp"] = datetime.now(UTC).isoformat()
 
         except json.JSONDecodeError:
@@ -107,6 +115,9 @@ class R_W_mqtt_client:
             current_data = json.loads(payload)
             if 'codes' in self.config['MQTT']["status_topics"][msg.topic]:
                 current_data = self.config['MQTT']["status_topics"][msg.topic]['codes'].get(current_data, f'unknown {current_data}')
+            if 'type' in self.config['MQTT']["status_topics"][msg.topic]:
+                if self.config['MQTT']["status_topics"][msg.topic]['type'] == 'none':
+                    current_data = current_data is not None
             if 'elements' in self.config['MQTT']["status_topics"][msg.topic]:
                 current_data = [val for i, val in enumerate(current_data) if i in self.config['MQTT']["status_topics"][msg.topic]['elements']]
                 phases = sum(i> 100 for i in current_data )
@@ -203,10 +214,10 @@ class R_W_mqtt_client:
             return False
         self.mqtt_client.publish(topic, json.dumps(data))
 
-    def publish_mqtt(self, data):
+    def publish_mqtt(self, data: dict):
         self.mqtt_client.publish(self.output_topic, json.dumps(data))
 
-    def publish_http(self, data):
+    def publish_http(self, data: dict):
         url = rf'http://{self.charger_ip}/api/set?ids={json.dumps(data)}'
         # call url
         try:
@@ -266,7 +277,7 @@ class R_W_mqtt_client:
             self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
             self.output["pPv"] = self.cache.get("dcPowerPV", 0)
 
-            #self.publish_method(self.output)
+            self.publish_method(self.output)
 
             #print(self.output)
             # for topic, value in output.items():
