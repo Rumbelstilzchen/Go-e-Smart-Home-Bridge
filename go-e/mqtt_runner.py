@@ -98,7 +98,7 @@ class R_W_mqtt_client:
                 self.web_exchange['status']['HomeGrid'] = round_sig(current_data['AktHomeConsumptionGrid'] / 1000, 2)
                 self.web_exchange['status']['HomeSOC'] = current_data['BatStateOfCharge']
                 self.web_exchange['status']['HomePVDC'] = round_sig(current_data['dcPowerPV'] / 1000, 2)
-                self.web_exchange['status']["timestamp"] = datetime.now(UTC).isoformat()
+                self.web_exchange['status']["timestamp"] = datetime.fromtimestamp(current_data['time_sec'],UTC).isoformat()
 
         except json.JSONDecodeError:
             logger.exception(f"Invalid JSON received.")
@@ -277,7 +277,7 @@ class R_W_mqtt_client:
             self.output["pAkku"] = (self.cache.get("BatPowerEntLaden", 0) * self.bat_scaling_factor['discharging']) + bat_offset - (self.cache.get("BatPowerLaden", 0) * self.bat_scaling_factor['charging'] )
             self.output["pPv"] = self.cache.get("dcPowerPV", 0)
 
-            self.publish_method(self.output)
+            #self.publish_method(self.output)
 
             #print(self.output)
             # for topic, value in output.items():

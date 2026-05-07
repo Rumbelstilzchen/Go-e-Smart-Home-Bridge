@@ -202,6 +202,18 @@ async def get_status( username: str = Depends(verify_session)):
             detail="Failed to get status"
         )
 
+@app.get("/api/username")
+async def get_username( username: str = Depends(verify_session)):
+    """Get current charger status and live values."""
+    try:
+        return username
+    except Exception as e:
+        logger.error(f"Error getting status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get status"
+        )
+
 @app.get("/api/live")
 async def get_live_values(username: str = Depends(verify_session)):
     """Get live charger values."""

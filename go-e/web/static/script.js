@@ -119,6 +119,19 @@ async function fetchMqttStatus() {
         return null;
     }
 }
+async function fetchUsername() {
+    try {
+        const response = await fetch(`${API_BASE}/username`);
+        if (response.status === 401) {
+            redirectToLogin();
+            return null;
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching override status values:', error);
+        return null;
+    }
+}
 
 async function setMode(mode) {
     try {
@@ -307,8 +320,9 @@ function updateMQTTStatus(connected) {
     }
 }
 
-function updateUserDisplay(username) {
+async function updateUserDisplay() {
     const userElement = document.getElementById('userName');
+    const username = await fetchUsername();
     if (username) {
         userElement.textContent = `Benutzer: ${username}`;
     }
@@ -407,6 +421,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(refreshData, REFRESH_INTERVAL);
     setInterval(refreshMqttStatus, REFRESH_INTERVAL);
     setInterval(refreshOverrideStatus, OVERRIDE_CHECK_INTERVAL);
+
+    updateUserDisplay()
 
     console.log('Dashboard ready');
 });
