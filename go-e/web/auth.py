@@ -17,6 +17,25 @@ logger = logging.getLogger(__name__)
 
 _sessions_lock = threading.Lock()
 
+def replace_plain_pw(user, password):
+    try:
+        import os
+        import re
+
+        config_path = os.path.join(os.path.dirname(__file__),'..', "config",'config.yaml')
+
+        pw_hash = hash_password(password)
+        with open(config_path, 'r' , encoding='utf8') as f:
+            content = f.read()
+            #content_new = re.sub(f'    {user}: ["\']{password}["\']', f'    {user}: "{pw_hash}"', content, flags = re.M)
+            content_new = content.replace(f'    {user}: "{password}"', f'    {user}: "{pw_hash}"')
+            content_new = content_new.replace(f"    {user}: '{password}'", f'    {user}: "{pw_hash}"')
+        with open(config_path, 'w', encoding='utf8') as f:
+            f.write(content_new)
+    except Exception:
+        logger.exception("Error replacing plaintext password with hash in configuration file")
+        return password
+    return pw_hash
 
 
 def hash_password(password: str) -> str:
@@ -43,7 +62,7 @@ class AuthManager:
         """
         self.config = config
         self.session_timeout = config.get("session_timeout_minutes", 60)
-        self.users = {user: pw if pw.startswith("$2b$") else hash_password(pw) for user, pw in config.get("users", {}).items()}
+        self.users = {user: pw if pw.startswith("$2b$") else replace_plain_pw(user,pw) for user, pw in config.get("users", {}).items()}
         self.sessions: dict[str, dict[str, str|datetime]] = {}
 
     def validate_credentials(self, username: str, password: str) -> bool:
@@ -64,9 +83,8 @@ class AuthManager:
 
         # Only support bcrypt hashes (no plaintext fallback for security)
         if not stored_hash.startswith("$2b$"):
-            logger.error(f"Invalid password hash format for user: {username}")
+            logger.error(f"Plaintext password was not replaced with hash for user: {username}")
             return False
-
         try:
             return verify_password(password, stored_hash)
         except Exception as e:
